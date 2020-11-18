@@ -9,12 +9,16 @@ import (
 func main() {
 	fmt.Println("Mode7 begins!")
 
+	const windowSizeX = 640
+	const windowSizeY = 480
+	const stride = 4
+
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		panic(err)
 	}
 	defer sdl.Quit()
 
-	window, err := sdl.CreateWindow("Mode 7", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, 640, 480, sdl.WINDOW_SHOWN)
+	window, err := sdl.CreateWindow("Mode 7", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, windowSizeX, windowSizeY, sdl.WINDOW_SHOWN)
 
 	if err != nil {
 		panic(err)
@@ -34,7 +38,7 @@ func main() {
 	}
 	defer texture.Destroy()
 
-	pixels := make([]byte, 640*480*4)
+	pixels := make([]byte, windowSizeX*windowSizeY*stride)
 
 	running := true
 	for running {
@@ -52,7 +56,7 @@ func main() {
 			pixels[i] = byte(rand.Intn(256))
 		}
 
-		texture.Update(nil, pixels, 640*4)
+		texture.Update(nil, pixels, windowSizeX*stride)
 		window.UpdateSurface()
 
 		renderer.Clear()
