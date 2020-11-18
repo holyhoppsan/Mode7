@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/veandco/go-sdl2/sdl"
+	"math/rand"
 )
 
 func main() {
@@ -20,15 +21,20 @@ func main() {
 	}
 	defer window.Destroy()
 
-	surface, err := window.GetSurface()
+	renderer, err := sdl.CreateRenderer(window, -1, 0)
 	if err != nil {
 		panic(err)
 	}
-	surface.FillRect(nil, 0)
+	defer renderer.Destroy()
 
-	rect := sdl.Rect{0, 0, 200, 200}
-	surface.FillRect(&rect, 0xff00ff00)
-	window.UpdateSurface()
+	texture, err := renderer.CreateTexture(sdl.PIXELFORMAT_ABGR8888, sdl.TEXTUREACCESS_STATIC, 640, 480)
+
+	if err != nil {
+		panic(err)
+	}
+	defer texture.Destroy()
+
+	pixels := make([]byte, 640*480*4)
 
 	running := true
 	for running {
@@ -40,5 +46,17 @@ func main() {
 				break
 			}
 		}
+
+		// Render logic
+		for i := range pixels {
+			pixels[i] = byte(rand.Intn(256))
+		}
+
+		texture.Update(nil, pixels, 640*4)
+		window.UpdateSurface()
+
+		renderer.Clear()
+		renderer.Copy(texture, nil, nil)
+		renderer.Present()
 	}
 }
