@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/EngoEngine/glm"
 	"github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -11,6 +12,8 @@ const windowSizeX = 640
 const windowSizeY = 480
 const stride = 4
 
+var cameraToBackgroundTranslation = glm.Vec2{0.0, 0.0}
+
 func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
 		return -1, errors.New("getPixelIndex: out of bounds")
@@ -18,6 +21,55 @@ func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
 
 	index := (x * int(surface.Format.BytesPerPixel)) + (y * int(surface.Pitch))
 	return index, nil
+}
+
+func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSurface *sdl.Surface) {
+	// dx = displacement vector
+	// T(dx) = Translation from camera space to background space
+	// p = position in background space
+	// q = position in camera space
+	// T(dx)p = p + dx
+	// T(dx)^-1 = T(-dx)
+
+	// T(dx)q = p
+
+	// P * q = p
+	// P = A^-1
+
+	// q = A * T(-dx)p
+	// A^-1 * q = A^-1 * A * T(-dx)p
+	// A^-1 * q = I * T(-dx)p
+	// P * q = T(-dx)p
+	// P * q = p - dx
+	// dx + P * q = p
+
+	// Adding the rotation point
+	// TBD
+
+	for y := 0; y < windowSizeY; y++ {
+		for x := 0; x < windowSizeX; x++ {
+			destIndex := (x + (y * windowSizeX)) * stride
+
+			cameraSpacePosition := glm.Vec2{float32(x), float32(y)}
+
+			backgroundSamplePosition := cameraSpacePosition.Sub(&cameraToBackgroundTranslation)
+
+			srcIndex, err := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
+
+			if err == nil {
+				targetPixels[destIndex] = backgroundPixels[srcIndex]
+				targetPixels[destIndex+1] = backgroundPixels[srcIndex+1]
+				targetPixels[destIndex+2] = backgroundPixels[srcIndex+2]
+				targetPixels[destIndex+3] = backgroundPixels[srcIndex+3]
+			}
+		}
+	}
+}
+
+func clearRenderTarget(targetBuffer []byte) {
+	for index := 0; index < len(targetBuffer); index++ {
+		targetBuffer[index] = 0
+	}
 }
 
 func main() {
@@ -60,21 +112,6 @@ func main() {
 
 	mapPixels := mapImage.Pixels()
 
-	for y := 0; y < windowSizeY; y++ {
-		for x := 0; x < windowSizeX; x++ {
-			destIndex := (x + (y * windowSizeX)) * stride
-
-			srcIndex, err := getPixelIndex(x, y, mapImage)
-
-			if err == nil {
-				targetPixels[destIndex] = mapPixels[srcIndex]
-				targetPixels[destIndex+1] = mapPixels[srcIndex+1]
-				targetPixels[destIndex+2] = mapPixels[srcIndex+2]
-				targetPixels[destIndex+3] = mapPixels[srcIndex+3]
-			}
-		}
-	}
-
 	running := true
 	for running {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -84,13 +121,33 @@ func main() {
 				running = false
 				break
 			case *sdl.KeyboardEvent:
-				if t.Keysym.Sym == sdl.K_ESCAPE {
-					running = false
+				if t.Type == sdl.KEYDOWN {
+					switch t.Keysym.Sym {
+					case sdl.K_ESCAPE:
+						running = false
+						break
+					case sdl.K_UP:
+						cameraToBackgroundTranslation.AddWith(&glm.Vec2{0.0, -1.0})
+						break
+					case sdl.K_DOWN:
+						cameraToBackgroundTranslation.AddWith(&glm.Vec2{0.0, 1.0})
+						break
+					case sdl.K_LEFT:
+						cameraToBackgroundTranslation.AddWith(&glm.Vec2{-1.0, 0.0})
+						break
+					case sdl.K_RIGHT:
+						cameraToBackgroundTranslation.AddWith(&glm.Vec2{1.0, 0.0})
+						break
+					}
 				}
 			}
 		}
 
 		// Render logic
+
+		clearRenderTarget(targetPixels)
+		rasterBackground(targetPixels, mapPixels, mapImage)
+
 		texture.Update(nil, targetPixels, windowSizeX*stride)
 		window.UpdateSurface()
 
