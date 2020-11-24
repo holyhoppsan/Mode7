@@ -13,6 +13,7 @@ const windowSizeY = 480
 const stride = 4
 
 var cameraToBackgroundTranslation = glm.Vec2{0.0, 0.0}
+var affineTransformationMatrix = glm.Mat2{1.0, 0.0, 0.0, 1.0}
 
 func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
@@ -52,7 +53,8 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 
 			cameraSpacePosition := glm.Vec2{float32(x), float32(y)}
 
-			backgroundSamplePosition := cameraSpacePosition.Sub(&cameraToBackgroundTranslation)
+			translatedCameraPosition := cameraSpacePosition.Sub(&cameraToBackgroundTranslation)
+			backgroundSamplePosition := affineTransformationMatrix.Mul2x1(&translatedCameraPosition)
 
 			srcIndex, err := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
 
@@ -137,6 +139,18 @@ func main() {
 						break
 					case sdl.K_RIGHT:
 						cameraToBackgroundTranslation.AddWith(&glm.Vec2{1.0, 0.0})
+						break
+					case sdl.K_a:
+						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)-0.1)
+						break
+					case sdl.K_d:
+						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)+0.1)
+						break
+					case sdl.K_w:
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)+0.1)
+						break
+					case sdl.K_s:
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)-0.1)
 						break
 					}
 				}
