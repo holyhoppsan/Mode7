@@ -12,7 +12,7 @@ const windowSizeX = 640
 const windowSizeY = 480
 const stride = 4
 
-var cameraToBackgroundTranslation = glm.Vec2{0.0, 0.0}
+var cameraWorldPosition = glm.Vec2{0, 0}
 var affineTransformationMatrix = glm.Mat2{1.0, 0.0, 0.0, 1.0}
 
 func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
@@ -43,18 +43,21 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	// P * q = T(-dx)p
 	// P * q = p - dx
 	// dx + P * q = p
-
-	// Adding the rotation point
-	// TBD
-
 	for y := 0; y < windowSizeY; y++ {
 		for x := 0; x < windowSizeX; x++ {
 			destIndex := (x + (y * windowSizeX)) * stride
 
+			// P * (q- q0) + p0 = p
 			cameraSpacePosition := glm.Vec2{float32(x), float32(y)}
+			cameraCenterOffset := glm.Vec2{float32(windowSizeX / 2), float32(windowSizeY / 2)}
 
-			translatedCameraPosition := cameraSpacePosition.Sub(&cameraToBackgroundTranslation)
-			backgroundSamplePosition := affineTransformationMatrix.Mul2x1(&translatedCameraPosition)
+			samplePostionCameraSpace := cameraSpacePosition.Sub(&cameraCenterOffset)
+
+			invertedAffineTransformationMatrix := affineTransformationMatrix.Inverse()
+			transformedCameraSpacePosition := invertedAffineTransformationMatrix.Mul2x1(&samplePostionCameraSpace)
+
+			backgroundSamplePosition := cameraWorldPosition
+			backgroundSamplePosition.AddWith(&transformedCameraSpacePosition)
 
 			srcIndex, err := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
 
@@ -129,28 +132,30 @@ func main() {
 						running = false
 						break
 					case sdl.K_UP:
-						cameraToBackgroundTranslation.AddWith(&glm.Vec2{0.0, -1.0})
+						cameraWorldPosition.AddWith(&glm.Vec2{0.0, -1.0})
 						break
 					case sdl.K_DOWN:
-						cameraToBackgroundTranslation.AddWith(&glm.Vec2{0.0, 1.0})
+						cameraWorldPosition.AddWith(&glm.Vec2{0.0, 1.0})
 						break
 					case sdl.K_LEFT:
-						cameraToBackgroundTranslation.AddWith(&glm.Vec2{-1.0, 0.0})
+						cameraWorldPosition.AddWith(&glm.Vec2{-1.0, 0.0})
 						break
 					case sdl.K_RIGHT:
-						cameraToBackgroundTranslation.AddWith(&glm.Vec2{1.0, 0.0})
+						cameraWorldPosition.AddWith(&glm.Vec2{1.0, 0.0})
 						break
 					case sdl.K_a:
-						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)-0.1)
+						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)*0.5)
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*0.5)
 						break
 					case sdl.K_d:
-						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)+0.1)
+						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)*2)
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*2)
 						break
 					case sdl.K_w:
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)+0.1)
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*2.0)
 						break
 					case sdl.K_s:
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)-0.1)
+						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*0.5)
 						break
 					}
 				}
