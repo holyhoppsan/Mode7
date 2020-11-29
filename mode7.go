@@ -6,14 +6,16 @@ import (
 	"github.com/EngoEngine/glm"
 	"github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
+	"math"
 )
 
 const windowSizeX = 640
 const windowSizeY = 480
 const stride = 4
 
-var cameraWorldPosition = glm.Vec2{0, 0}
-var affineTransformationMatrix = glm.Mat2{1.0, 0.0, 0.0, 1.0}
+var cameraWorldPosition = glm.Vec3{0, 0, 0}
+var cameraScale = glm.Vec2{1.0, 1.0}
+var cameraRotation = float32(math.Pi / 2)
 
 func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
@@ -43,6 +45,12 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	// P * q = T(-dx)p
 	// P * q = p - dx
 	// dx + P * q = p
+
+	rotationMatrix := glm.Rotate2D(cameraRotation)
+	scaleMatrix := glm.Mat2{cameraScale.X(), 0.0, 0.0, cameraScale.Y()}
+	affineTransform := rotationMatrix.Mul2(&scaleMatrix)
+	invertedAffineTransformationMatrix := affineTransform.Inverse()
+
 	for y := 0; y < windowSizeY; y++ {
 		for x := 0; x < windowSizeX; x++ {
 			destIndex := (x + (y * windowSizeX)) * stride
@@ -53,10 +61,9 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 
 			samplePostionCameraSpace := cameraSpacePosition.Sub(&cameraCenterOffset)
 
-			invertedAffineTransformationMatrix := affineTransformationMatrix.Inverse()
 			transformedCameraSpacePosition := invertedAffineTransformationMatrix.Mul2x1(&samplePostionCameraSpace)
 
-			backgroundSamplePosition := cameraWorldPosition
+			backgroundSamplePosition := glm.Vec2{cameraWorldPosition.X(), cameraWorldPosition.Y()}
 			backgroundSamplePosition.AddWith(&transformedCameraSpacePosition)
 
 			srcIndex, err := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
@@ -132,30 +139,36 @@ func main() {
 						running = false
 						break
 					case sdl.K_UP:
-						cameraWorldPosition.AddWith(&glm.Vec2{0.0, -1.0})
+						cameraWorldPosition.AddWith(&glm.Vec3{0.0, -1.0, 0.0})
 						break
 					case sdl.K_DOWN:
-						cameraWorldPosition.AddWith(&glm.Vec2{0.0, 1.0})
+						cameraWorldPosition.AddWith(&glm.Vec3{0.0, 1.0, 0.0})
 						break
 					case sdl.K_LEFT:
-						cameraWorldPosition.AddWith(&glm.Vec2{-1.0, 0.0})
+						cameraWorldPosition.AddWith(&glm.Vec3{-1.0, 0.0, 0.0})
 						break
 					case sdl.K_RIGHT:
-						cameraWorldPosition.AddWith(&glm.Vec2{1.0, 0.0})
+						cameraWorldPosition.AddWith(&glm.Vec3{1.0, 0.0, 0.0})
 						break
 					case sdl.K_a:
-						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)*0.5)
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*0.5)
+						cameraScale[0] = cameraScale[0] * 0.5
+						cameraScale[1] = cameraScale[1] * 0.5
 						break
 					case sdl.K_d:
-						affineTransformationMatrix.Set(0, 0, affineTransformationMatrix.At(0, 0)*2)
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*2)
+						cameraScale[0] = cameraScale[0] * 2.0
+						cameraScale[1] = cameraScale[1] * 2.0
 						break
 					case sdl.K_w:
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*2.0)
+						cameraScale[1] = cameraScale[1] * 2.0
 						break
 					case sdl.K_s:
-						affineTransformationMatrix.Set(1, 1, affineTransformationMatrix.At(1, 1)*0.5)
+						cameraScale[1] = cameraScale[1] * 0.5
+						break
+					case sdl.K_q:
+						cameraRotation = cameraRotation + 0.01*math.Pi
+						break
+					case sdl.K_e:
+						cameraRotation = cameraRotation - 0.01*math.Pi
 						break
 					}
 				}
