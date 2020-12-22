@@ -80,6 +80,13 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	}
 }
 
+func applyTranslationCameraSpace(translationDirection glm.Vec3) {
+	var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
+	var inverseRotationMatrix = rotationMatrix.Inverse()
+	var directionVector = inverseRotationMatrix.Mul3x1(&translationDirection)
+	cameraWorldPosition.AddWith(&directionVector)
+}
+
 func clearRenderTarget(targetBuffer []byte) {
 	for index := 0; index < len(targetBuffer); index++ {
 		targetBuffer[index] = 0
@@ -143,28 +150,16 @@ func main() {
 						running = false
 						break
 					case sdl.K_UP:
-						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
-						var inverseRotationMatrix = rotationMatrix.Inverse()
-						var directionVector = inverseRotationMatrix.Mul3x1(&upVector)
-						cameraWorldPosition.SubWith(&directionVector)
+						applyTranslationCameraSpace(glm.Vec3{0.0, -1.0, 0.0})
 						break
 					case sdl.K_DOWN:
-						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
-						var inverseRotationMatrix = rotationMatrix.Inverse()
-						var directionVector = inverseRotationMatrix.Mul3x1(&upVector)
-						cameraWorldPosition.AddWith(&directionVector)
+						applyTranslationCameraSpace(glm.Vec3{0.0, 1.0, 0.0})
 						break
 					case sdl.K_LEFT:
-						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
-						var inverseRotationMatrix = rotationMatrix.Inverse()
-						var directionVector = inverseRotationMatrix.Mul3x1(&rightVector)
-						cameraWorldPosition.SubWith(&directionVector)
+						applyTranslationCameraSpace(glm.Vec3{-1.0, 0.0, 0.0})
 						break
 					case sdl.K_RIGHT:
-						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
-						var inverseRotationMatrix = rotationMatrix.Inverse()
-						var directionVector = inverseRotationMatrix.Mul3x1(&rightVector)
-						cameraWorldPosition.AddWith(&directionVector)
+						applyTranslationCameraSpace(glm.Vec3{1.0, 0.0, 0.0})
 						break
 					case sdl.K_a:
 						cameraScale[0] = cameraScale[0] * 0.5
