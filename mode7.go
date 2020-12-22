@@ -1,12 +1,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"math"
+
 	"github.com/EngoEngine/glm"
 	"github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
-	"math"
 )
 
 const windowSizeX = 640
@@ -20,13 +20,13 @@ var cameraWorldPosition = glm.Vec3{0, 0, 0}
 var cameraScale = glm.Vec2{1.0, 1.0}
 var cameraRotation = glm.Vec3{0.0, 0.0, math.Pi / 2}
 
-func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
+func getPixelIndex(x int, y int, surface *sdl.Surface) int {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
-		return -1, errors.New("getPixelIndex: out of bounds")
+		return -1
 	}
 
 	index := (x * int(surface.Format.BytesPerPixel)) + (y * int(surface.Pitch))
-	return index, nil
+	return index
 }
 
 func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSurface *sdl.Surface) {
@@ -69,9 +69,8 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 			backgroundSamplePosition := glm.Vec2{cameraWorldPosition.X(), cameraWorldPosition.Y()}
 			backgroundSamplePosition.AddWith(&transformedCameraSpacePosition)
 
-			srcIndex, err := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
-
-			if err == nil {
+			srcIndex := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
+			if srcIndex != -1 {
 				targetPixels[destIndex] = backgroundPixels[srcIndex]
 				targetPixels[destIndex+1] = backgroundPixels[srcIndex+1]
 				targetPixels[destIndex+2] = backgroundPixels[srcIndex+2]
@@ -116,7 +115,7 @@ func main() {
 	}
 	defer mapImage.Free()
 
-	texture, err := renderer.CreateTexture(sdl.PIXELFORMAT_ABGR8888, sdl.TEXTUREACCESS_STATIC, 640, 480)
+	texture, err := renderer.CreateTexture(sdl.PIXELFORMAT_ABGR8888, sdl.TEXTUREACCESS_STATIC, windowSizeX, windowSizeY)
 
 	if err != nil {
 		panic(err)
@@ -128,6 +127,8 @@ func main() {
 	mapPixels := mapImage.Pixels()
 
 	running := true
+	startTime := sdl.GetTicks()
+	countedFrames := 0
 	for running {
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
@@ -191,6 +192,9 @@ func main() {
 		}
 
 		// Render logic
+		countedFrames++
+		averageFramesPerSecond := float32(countedFrames) / float32(sdl.GetTicks()-startTime) * 1000.0
+		window.SetTitle(fmt.Sprintf("Avg FPS: %f", averageFramesPerSecond))
 
 		clearRenderTarget(targetPixels)
 		rasterBackground(targetPixels, mapPixels, mapImage)
