@@ -13,6 +13,9 @@ const windowSizeX = 640
 const windowSizeY = 480
 const stride = 4
 
+var upVector = glm.Vec3{0.0, 1.0, 0.0}
+var rightVector = glm.Vec3{1.0, 0.0, 0.0}
+
 var cameraWorldPosition = glm.Vec3{0, 0, 0}
 var cameraScale = glm.Vec2{1.0, 1.0}
 var cameraRotation = glm.Vec3{0.0, 0.0, math.Pi / 2}
@@ -139,16 +142,28 @@ func main() {
 						running = false
 						break
 					case sdl.K_UP:
-						cameraWorldPosition.AddWith(&glm.Vec3{0.0, -1.0, 0.0})
+						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
+						var inverseRotationMatrix = rotationMatrix.Inverse()
+						var directionVector = inverseRotationMatrix.Mul3x1(&upVector)
+						cameraWorldPosition.SubWith(&directionVector)
 						break
 					case sdl.K_DOWN:
-						cameraWorldPosition.AddWith(&glm.Vec3{0.0, 1.0, 0.0})
+						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
+						var inverseRotationMatrix = rotationMatrix.Inverse()
+						var directionVector = inverseRotationMatrix.Mul3x1(&upVector)
+						cameraWorldPosition.AddWith(&directionVector)
 						break
 					case sdl.K_LEFT:
-						cameraWorldPosition.AddWith(&glm.Vec3{-1.0, 0.0, 0.0})
+						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
+						var inverseRotationMatrix = rotationMatrix.Inverse()
+						var directionVector = inverseRotationMatrix.Mul3x1(&rightVector)
+						cameraWorldPosition.SubWith(&directionVector)
 						break
 					case sdl.K_RIGHT:
-						cameraWorldPosition.AddWith(&glm.Vec3{1.0, 0.0, 0.0})
+						var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
+						var inverseRotationMatrix = rotationMatrix.Inverse()
+						var directionVector = inverseRotationMatrix.Mul3x1(&rightVector)
+						cameraWorldPosition.AddWith(&directionVector)
 						break
 					case sdl.K_a:
 						cameraScale[0] = cameraScale[0] * 0.5
