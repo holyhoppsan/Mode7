@@ -15,7 +15,7 @@ const stride = 4
 
 var cameraWorldPosition = glm.Vec3{0, 0, 0}
 var cameraScale = glm.Vec2{1.0, 1.0}
-var cameraRotation = float32(math.Pi / 2)
+var cameraRotation = glm.Vec3{0.0, 0.0, math.Pi / 2}
 
 func getPixelIndex(x int, y int, surface *sdl.Surface) (int, error) {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
@@ -46,7 +46,7 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	// P * q = p - dx
 	// dx + P * q = p
 
-	rotationMatrix := glm.Rotate2D(cameraRotation)
+	rotationMatrix := glm.Rotate2D(cameraRotation[2])
 	scaleMatrix := glm.Mat2{cameraScale.X(), 0.0, 0.0, cameraScale.Y()}
 	affineTransform := rotationMatrix.Mul2(&scaleMatrix)
 	invertedAffineTransformationMatrix := affineTransform.Inverse()
@@ -165,10 +165,10 @@ func main() {
 						cameraScale[1] = cameraScale[1] * 0.5
 						break
 					case sdl.K_q:
-						cameraRotation = cameraRotation + 0.01*math.Pi
+						cameraRotation[2] += 0.01 * math.Pi
 						break
 					case sdl.K_e:
-						cameraRotation = cameraRotation - 0.01*math.Pi
+						cameraRotation[2] -= 0.01 * math.Pi
 						break
 					}
 				}
