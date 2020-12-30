@@ -20,6 +20,11 @@ var cameraWorldPosition = glm.Vec3{0, 0, 0}
 var cameraScale = glm.Vec2{1.0, 1.0}
 var cameraRotation = glm.Vec3{0.0, 0.0, math.Pi / 2}
 
+var frameRateCap uint32 = 1000 / 30
+
+const cameraVelocity = 50.0
+const cameraAngluarVelocity = math.Pi / 4
+
 func getPixelIndex(x int, y int, surface *sdl.Surface) int {
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
 		return -1
@@ -80,16 +85,88 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	}
 }
 
-func applyTranslationCameraSpace(translationDirection glm.Vec3) {
-	var rotationMatrix = glm.Rotate3DZ(cameraRotation.Z())
-	var inverseRotationMatrix = rotationMatrix.Inverse()
-	var directionVector = inverseRotationMatrix.Mul3x1(&translationDirection)
-	cameraWorldPosition.AddWith(&directionVector)
+func applyTranslationCameraSpace(translationDirection glm.Vec3, deltaTime float32) {
+	rotationMatrix := glm.Rotate3DZ(cameraRotation.Z())
+	inverseRotationMatrix := rotationMatrix.Inverse()
+	directionVector := inverseRotationMatrix.Mul3x1(&translationDirection)
+	velocityMultiplier := cameraVelocity * deltaTime
+	timeAdjustedDirectionVector := directionVector.Mul(velocityMultiplier)
+	cameraWorldPosition.AddWith(&timeAdjustedDirectionVector)
 }
 
 func clearRenderTarget(targetBuffer []byte) {
 	for index := 0; index < len(targetBuffer); index++ {
 		targetBuffer[index] = 0
+	}
+}
+
+func processSDLEvents() bool {
+	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+		switch t := event.(type) {
+		case *sdl.QuitEvent:
+			fmt.Println("Quit")
+			return false
+		case *sdl.KeyboardEvent:
+			if t.Type == sdl.KEYDOWN {
+				switch t.Keysym.Sym {
+				case sdl.K_ESCAPE:
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func processInput(deltaTime float32) {
+	keyboardState := sdl.GetKeyboardState()
+
+	directionVector := glm.Vec3{0.0, 0.0, 0.0}
+	if keyboardState[sdl.SCANCODE_UP] == 1 {
+		directionVector[1] += -1.0
+	}
+
+	if keyboardState[sdl.SCANCODE_DOWN] == 1 {
+		directionVector[1] += 1.0
+	}
+
+	if keyboardState[sdl.SCANCODE_LEFT] == 1 {
+		directionVector[0] += -1.0
+	}
+
+	if keyboardState[sdl.SCANCODE_RIGHT] == 1 {
+		directionVector[0] += 1.0
+	}
+
+	if directionVector.Len() > 0.0 {
+		directionVector.Normalize()
+		applyTranslationCameraSpace(directionVector, deltaTime)
+	}
+
+	if keyboardState[sdl.SCANCODE_A] == 1 {
+		cameraScale[0] = float32(math.Max(float64(cameraScale[0]-deltaTime), 0.001))
+		cameraScale[1] = float32(math.Max(float64(cameraScale[1]-deltaTime), 0.001))
+	}
+
+	if keyboardState[sdl.SCANCODE_D] == 1 {
+		cameraScale[0] = float32(math.Max(float64(cameraScale[0]+deltaTime), 0.001))
+		cameraScale[1] = float32(math.Max(float64(cameraScale[1]+deltaTime), 0.001))
+	}
+
+	if keyboardState[sdl.SCANCODE_W] == 1 {
+		cameraScale[1] = cameraScale[1] * 2.0
+	}
+
+	if keyboardState[sdl.SCANCODE_S] == 1 {
+		cameraScale[1] = cameraScale[1] * 0.5
+	}
+
+	if keyboardState[sdl.SCANCODE_Q] == 1 {
+		cameraRotation[2] += cameraAngluarVelocity * deltaTime
+	}
+
+	if keyboardState[sdl.SCANCODE_E] == 1 {
+		cameraRotation[2] -= cameraAngluarVelocity * deltaTime
 	}
 }
 
@@ -135,70 +212,37 @@ func main() {
 
 	running := true
 	startTime := sdl.GetTicks()
+	currentTimeStamp := sdl.GetTicks()
+	lastTimeStamp := uint32(0)
 	countedFrames := 0
+	timeSinceLastTick := uint32(0)
 	for running {
-		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-			switch t := event.(type) {
-			case *sdl.QuitEvent:
-				fmt.Println("Quit")
-				running = false
-				break
-			case *sdl.KeyboardEvent:
-				if t.Type == sdl.KEYDOWN {
-					switch t.Keysym.Sym {
-					case sdl.K_ESCAPE:
-						running = false
-						break
-					case sdl.K_UP:
-						applyTranslationCameraSpace(glm.Vec3{0.0, -1.0, 0.0})
-						break
-					case sdl.K_DOWN:
-						applyTranslationCameraSpace(glm.Vec3{0.0, 1.0, 0.0})
-						break
-					case sdl.K_LEFT:
-						applyTranslationCameraSpace(glm.Vec3{-1.0, 0.0, 0.0})
-						break
-					case sdl.K_RIGHT:
-						applyTranslationCameraSpace(glm.Vec3{1.0, 0.0, 0.0})
-						break
-					case sdl.K_a:
-						cameraScale[0] = cameraScale[0] * 0.5
-						cameraScale[1] = cameraScale[1] * 0.5
-						break
-					case sdl.K_d:
-						cameraScale[0] = cameraScale[0] * 2.0
-						cameraScale[1] = cameraScale[1] * 2.0
-						break
-					case sdl.K_w:
-						cameraScale[1] = cameraScale[1] * 2.0
-						break
-					case sdl.K_s:
-						cameraScale[1] = cameraScale[1] * 0.5
-						break
-					case sdl.K_q:
-						cameraRotation[2] += 0.01 * math.Pi
-						break
-					case sdl.K_e:
-						cameraRotation[2] -= 0.01 * math.Pi
-						break
-					}
-				}
-			}
+		lastTimeStamp = currentTimeStamp
+		currentTimeStamp = sdl.GetTicks()
+
+		timeSinceLastTick += currentTimeStamp - lastTimeStamp
+		if timeSinceLastTick > frameRateCap {
+			running = processSDLEvents()
+
+			frameDeltaTime := float32(timeSinceLastTick) / 1000.0
+			processInput(frameDeltaTime)
+
+			// Render logic
+			countedFrames++
+			averageFramesPerSecond := float32(countedFrames) / float32(sdl.GetTicks()-startTime) * 1000.0
+			window.SetTitle(fmt.Sprintf("Avg FPS: %f framerate cap: %d", averageFramesPerSecond, frameRateCap))
+
+			clearRenderTarget(targetPixels)
+			rasterBackground(targetPixels, mapPixels, mapImage)
+
+			texture.Update(nil, targetPixels, windowSizeX*stride)
+			window.UpdateSurface()
+
+			renderer.Clear()
+			renderer.Copy(texture, nil, nil)
+			renderer.Present()
+
+			timeSinceLastTick = 0
 		}
-
-		// Render logic
-		countedFrames++
-		averageFramesPerSecond := float32(countedFrames) / float32(sdl.GetTicks()-startTime) * 1000.0
-		window.SetTitle(fmt.Sprintf("Avg FPS: %f", averageFramesPerSecond))
-
-		clearRenderTarget(targetPixels)
-		rasterBackground(targetPixels, mapPixels, mapImage)
-
-		texture.Update(nil, targetPixels, windowSizeX*stride)
-		window.UpdateSurface()
-
-		renderer.Clear()
-		renderer.Copy(texture, nil, nil)
-		renderer.Present()
 	}
 }
