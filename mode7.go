@@ -16,22 +16,51 @@ const stride = 4
 var upVector = glm.Vec3{0.0, 1.0, 0.0}
 var rightVector = glm.Vec3{1.0, 0.0, 0.0}
 
-var cameraWorldPosition = glm.Vec3{0, 0, 0}
+var cameraWorldPosition = glm.Vec3{256, 32, 256}
 var cameraScale = glm.Vec2{1.0, 1.0}
-var cameraRotation = glm.Vec3{0.0, 0.0, math.Pi / 2}
+var cameraRotation = glm.Vec3{0.0, 0.0, 0.0 /*math.Pi / 2*/}
 
-var frameRateCap uint32 = 1000 / 30
+var nearPlaneDistance float32 = 32.0
+var horizonScanline = windowSizeY / 2
+
+var frameRateCap uint32 = 1000 / 60
 
 const cameraVelocity = 50.0
 const cameraAngluarVelocity = math.Pi / 4
 
-func getPixelIndex(x int, y int, surface *sdl.Surface) int {
+// RenderingMode Type for tracking the current render mode
+type RenderingMode int
+
+const (
+	Affine2D = iota
+	Mode7
+)
+
+var currentRenderingMode RenderingMode = Affine2D
+var previousRenderingModeKeyToggleState uint8 = 0
+
+func getPixelIndex(samplePosition glm.Vec2, surface *sdl.Surface) int {
+	x := int(samplePosition.X())
+	y := int(samplePosition.Y())
+
 	if x < 0 || x >= int(surface.W) || y < 0 || y >= int(surface.H) {
 		return -1
 	}
 
 	index := (x * int(surface.Format.BytesPerPixel)) + (y * int(surface.Pitch))
 	return index
+}
+
+func writePixelToBuffer(samplePosition glm.Vec2, x int, y int, targetPixels []byte, backgroundPixels []byte, backgroundSurface *sdl.Surface) {
+	srcIndex := getPixelIndex(samplePosition, backgroundSurface)
+	if srcIndex != -1 {
+		destIndex := (x + (y * windowSizeX)) * stride
+
+		targetPixels[destIndex] = backgroundPixels[srcIndex]
+		targetPixels[destIndex+1] = backgroundPixels[srcIndex+1]
+		targetPixels[destIndex+2] = backgroundPixels[srcIndex+2]
+		targetPixels[destIndex+3] = backgroundPixels[srcIndex+3]
+	}
 }
 
 func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSurface *sdl.Surface) {
@@ -57,36 +86,60 @@ func rasterBackground(targetPixels []byte, backgroundPixels []byte, backgroundSu
 	rotationMatrix := glm.Rotate2D(cameraRotation[2])
 	scaleMatrix := glm.Mat2{cameraScale.X(), 0.0, 0.0, cameraScale.Y()}
 	affineTransform := rotationMatrix.Mul2(&scaleMatrix)
-	invertedAffineTransformationMatrix := affineTransform.Inverse()
 
 	for y := 0; y < windowSizeY; y++ {
 		for x := 0; x < windowSizeX; x++ {
-			destIndex := (x + (y * windowSizeX)) * stride
-
 			// P * (q- q0) + p0 = p
 			cameraSpacePosition := glm.Vec2{float32(x), float32(y)}
 			cameraCenterOffset := glm.Vec2{float32(windowSizeX / 2), float32(windowSizeY / 2)}
 
 			samplePostionCameraSpace := cameraSpacePosition.Sub(&cameraCenterOffset)
 
-			transformedCameraSpacePosition := invertedAffineTransformationMatrix.Mul2x1(&samplePostionCameraSpace)
+			transformedCameraSpacePosition := affineTransform.Mul2x1(&samplePostionCameraSpace)
 
+			// Translate the camera space to background space
 			backgroundSamplePosition := glm.Vec2{cameraWorldPosition.X(), cameraWorldPosition.Y()}
 			backgroundSamplePosition.AddWith(&transformedCameraSpacePosition)
 
-			srcIndex := getPixelIndex(int(backgroundSamplePosition.X()), int(backgroundSamplePosition.Y()), backgroundSurface)
-			if srcIndex != -1 {
-				targetPixels[destIndex] = backgroundPixels[srcIndex]
-				targetPixels[destIndex+1] = backgroundPixels[srcIndex+1]
-				targetPixels[destIndex+2] = backgroundPixels[srcIndex+2]
-				targetPixels[destIndex+3] = backgroundPixels[srcIndex+3]
-			}
+			writePixelToBuffer(backgroundSamplePosition, x, y, targetPixels, backgroundPixels, backgroundSurface)
 		}
 	}
 }
 
-func applyTranslationCameraSpace(translationDirection glm.Vec3, deltaTime float32) {
-	rotationMatrix := glm.Rotate3DZ(cameraRotation.Z())
+func rasterBackgroundMode7Basic(targetPixels []byte, backgroundPixels []byte, backgroundSurface *sdl.Surface) {
+
+	// Projection w = z/d such that  z / w = z / (z / d) = z * (d / z) = d
+
+	// this means that lambda needs to be  y / ay. This means z / (y / ay) = z * (ay / ay)
+
+	rotationMatrix := glm.Rotate2D(cameraRotation[2])
+	for y := horizonScanline; y < windowSizeY; y++ {
+		h := y - horizonScanline
+		lambda := cameraWorldPosition.Y() / float32(h)
+		scaleMatrix := glm.Mat2{lambda, 0.0, 0.0, lambda}
+
+		cameraToBackgroundTransform := rotationMatrix.Mul2(&scaleMatrix)
+
+		for x := 0; x < windowSizeX; x++ {
+
+			screenSpacePosition := glm.Vec2{float32(x), float32(y)}
+
+			cameraCenterOffset := glm.Vec2{float32(windowSizeX / 2), nearPlaneDistance + float32(h)}
+
+			samplePostionCameraSpace := screenSpacePosition.Sub(&cameraCenterOffset)
+
+			transformedCameraSpacePosition := cameraToBackgroundTransform.Mul2x1(&samplePostionCameraSpace)
+
+			backgroundSamplePosition := glm.Vec2{cameraWorldPosition.X(), cameraWorldPosition.Z()}
+			backgroundSamplePosition.AddWith(&transformedCameraSpacePosition)
+
+			writePixelToBuffer(backgroundSamplePosition, x, y, targetPixels, backgroundPixels, backgroundSurface)
+		}
+	}
+}
+
+func applyTranslationCameraSpace(translationDirection glm.Vec3, rotation float32, deltaTime float32) {
+	rotationMatrix := glm.Rotate3DZ(rotation)
 	inverseRotationMatrix := rotationMatrix.Inverse()
 	directionVector := inverseRotationMatrix.Mul3x1(&translationDirection)
 	velocityMultiplier := cameraVelocity * deltaTime
@@ -140,7 +193,8 @@ func processInput(deltaTime float32) {
 
 	if directionVector.Len() > 0.0 {
 		directionVector.Normalize()
-		applyTranslationCameraSpace(directionVector, deltaTime)
+
+		applyTranslationCameraSpace(directionVector, cameraRotation.Z(), deltaTime)
 	}
 
 	if keyboardState[sdl.SCANCODE_A] == 1 {
@@ -168,6 +222,25 @@ func processInput(deltaTime float32) {
 	if keyboardState[sdl.SCANCODE_E] == 1 {
 		cameraRotation[2] -= cameraAngluarVelocity * deltaTime
 	}
+
+	if keyboardState[sdl.SCANCODE_R] == 1 {
+		nearPlaneDistance += float32(8.0 * deltaTime)
+	}
+
+	if keyboardState[sdl.SCANCODE_F] == 1 {
+		nearPlaneDistance -= float32(8.0 * deltaTime)
+	}
+
+	if previousRenderingModeKeyToggleState == 1 && keyboardState[sdl.SCANCODE_TAB] == 0 {
+		switch currentRenderingMode {
+		case Affine2D:
+			currentRenderingMode = Mode7
+		case Mode7:
+			currentRenderingMode = Affine2D
+		}
+	}
+
+	previousRenderingModeKeyToggleState = keyboardState[sdl.SCANCODE_TAB]
 }
 
 func main() {
@@ -230,10 +303,16 @@ func main() {
 			// Render logic
 			countedFrames++
 			averageFramesPerSecond := float32(countedFrames) / float32(sdl.GetTicks()-startTime) * 1000.0
-			window.SetTitle(fmt.Sprintf("Avg FPS: %f framerate cap: %d", averageFramesPerSecond, frameRateCap))
+			window.SetTitle(fmt.Sprintf("Avg FPS: %f framerate cap: %d scale: %f near %f", averageFramesPerSecond, frameRateCap, cameraScale.X(), nearPlaneDistance))
 
 			clearRenderTarget(targetPixels)
-			rasterBackground(targetPixels, mapPixels, mapImage)
+
+			switch currentRenderingMode {
+			case Affine2D:
+				rasterBackground(targetPixels, mapPixels, mapImage)
+			case Mode7:
+				rasterBackgroundMode7Basic(targetPixels, mapPixels, mapImage)
+			}
 
 			texture.Update(nil, targetPixels, windowSizeX*stride)
 			window.UpdateSurface()
