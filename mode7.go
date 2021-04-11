@@ -32,7 +32,7 @@ const cameraAngluarVelocity = math.Pi / 4
 type RenderingMode int
 
 const (
-	Affine2D = iota
+	Affine2D = iota + 1
 	Mode7
 )
 
@@ -123,7 +123,6 @@ func rasterBackgroundMode7Basic(targetPixels []byte, backgroundPixels []byte, ba
 		for x := 0; x < windowSizeX; x++ {
 
 			screenSpacePosition := glm.Vec2{float32(x), float32(y)}
-
 			cameraCenterOffset := glm.Vec2{float32(windowSizeX / 2), nearPlaneDistance + float32(h)}
 
 			samplePostionCameraSpace := screenSpacePosition.Sub(&cameraCenterOffset)
@@ -138,8 +137,17 @@ func rasterBackgroundMode7Basic(targetPixels []byte, backgroundPixels []byte, ba
 	}
 }
 
-func applyTranslationCameraSpace(translationDirection glm.Vec3, rotation float32, deltaTime float32) {
-	rotationMatrix := glm.Rotate3DZ(rotation)
+func applyTranslationCameraSpace(translationDirection glm.Vec3, rotation float32, renderingMode RenderingMode, deltaTime float32) {
+
+	rotationMatrix := glm.Ident3()
+
+	switch renderingMode {
+	case Affine2D:
+		rotationMatrix = glm.Rotate3DZ(rotation)
+	case Mode7:
+		rotationMatrix = glm.Rotate3DY(rotation)
+	}
+
 	inverseRotationMatrix := rotationMatrix.Inverse()
 	directionVector := inverseRotationMatrix.Mul3x1(&translationDirection)
 	velocityMultiplier := cameraVelocity * deltaTime
@@ -147,9 +155,13 @@ func applyTranslationCameraSpace(translationDirection glm.Vec3, rotation float32
 	cameraWorldPosition.AddWith(&timeAdjustedDirectionVector)
 }
 
-func clearRenderTarget(targetBuffer []byte) {
+func clearRenderTarget(targetBuffer []byte, white bool) {
 	for index := 0; index < len(targetBuffer); index++ {
-		targetBuffer[index] = 0
+		if white == true {
+			targetBuffer[index] = 255
+		} else {
+			targetBuffer[index] = 0
+		}
 	}
 }
 
@@ -175,16 +187,19 @@ func processInput(deltaTime float32) {
 	keyboardState := sdl.GetKeyboardState()
 
 	directionVector := glm.Vec3{0.0, 0.0, 0.0}
+
+	currentAxis := currentRenderingMode
+
 	if keyboardState[sdl.SCANCODE_UP] == 1 {
-		directionVector[1] += -1.0
+		directionVector[currentAxis] -= 1.0
 	}
 
 	if keyboardState[sdl.SCANCODE_DOWN] == 1 {
-		directionVector[1] += 1.0
+		directionVector[currentAxis] += 1.0
 	}
 
 	if keyboardState[sdl.SCANCODE_LEFT] == 1 {
-		directionVector[0] += -1.0
+		directionVector[0] -= 1.0
 	}
 
 	if keyboardState[sdl.SCANCODE_RIGHT] == 1 {
@@ -194,7 +209,7 @@ func processInput(deltaTime float32) {
 	if directionVector.Len() > 0.0 {
 		directionVector.Normalize()
 
-		applyTranslationCameraSpace(directionVector, cameraRotation.Z(), deltaTime)
+		applyTranslationCameraSpace(directionVector, cameraRotation.Z(), currentRenderingMode, deltaTime)
 	}
 
 	if keyboardState[sdl.SCANCODE_A] == 1 {
@@ -294,7 +309,7 @@ func main() {
 		currentTimeStamp = sdl.GetTicks()
 
 		timeSinceLastTick += currentTimeStamp - lastTimeStamp
-		if timeSinceLastTick > frameRateCap {
+		if timeSinceLastTick >= frameRateCap {
 			running = processSDLEvents()
 
 			frameDeltaTime := float32(timeSinceLastTick) / 1000.0
@@ -303,9 +318,9 @@ func main() {
 			// Render logic
 			countedFrames++
 			averageFramesPerSecond := float32(countedFrames) / float32(sdl.GetTicks()-startTime) * 1000.0
-			window.SetTitle(fmt.Sprintf("Avg FPS: %f framerate cap: %d scale: %f near %f", averageFramesPerSecond, frameRateCap, cameraScale.X(), nearPlaneDistance))
+			window.SetTitle(fmt.Sprintf("Avg FPS: %f framerate cap: %d frametime delta: %f near %f", averageFramesPerSecond, frameRateCap, frameDeltaTime, nearPlaneDistance))
 
-			clearRenderTarget(targetPixels)
+			clearRenderTarget(targetPixels, false)
 
 			switch currentRenderingMode {
 			case Affine2D:
